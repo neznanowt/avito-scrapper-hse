@@ -98,19 +98,28 @@ class AvitoCrawler:
             shot = self.cfg.path("debug", f"{now_msk():%Y%m%d_%H%M%S}_blocked.png")
             self.session.screenshot(shot)
             self._err(expect, url, "blocked", f"status={res.status} title={res.title!r} screenshot={shot.name}")
-            if pc.wait_for_operator and not self.cfg.browser.headless and self._wait_for_operator(expect):
+            # человек видит окно браузера (режим connect или видимый браузер) — даём ему пройти проверку
+            operator = self.session.interactive and (pc.wait_for_operator or self.cfg.browser.mode == "connect")
+            if operator and self._wait_for_operator(expect):
                 continue
             if blocks > pc.max_block_retries:
                 raise BlockedError(f"Авито блокирует запросы ({blocks} раз подряд): {res.title!r}")
-            log.warning("Пауза %.0f с после блокировки", pc.block_pause_s)
-            self.session.sleep(pc.block_pause_s)
+            if not operator:  # ожидание оператора и так было паузой
+                log.warning("Пауза %.0f с после блокировки", pc.block_pause_s)
+                self.session.sleep(pc.block_pause_s)
 
     def _wait_for_operator(self, expect: str) -> bool:
-        log.warning("Ожидаю, пока оператор пройдёт проверку в окне браузера (до %.0f с)…",
-                    self.cfg.pacing.operator_wait_max_s)
-        end = time.monotonic() + self.cfg.pacing.operator_wait_max_s
+        wait = self.cfg.pacing.operator_wait_max_s
+        self.session.bring_to_front()
+        print("\a", end="", flush=True)  # звуковой сигнал в консоли
+        log.warning("Авито показал проверку или ограничил доступ. Если в окне Chrome есть проверка «я не робот» — "
+                    "пройдите её, сбор продолжится сам. Если просто «Доступ ограничен», ничего делать не нужно: "
+                    "жду до %.0f мин и пробую снова.", wait / 60)
+        end = time.monotonic() + wait
         while time.monotonic() < end:
-            time.sleep(10)
+            if self.deadline is not None and time.monotonic() > self.deadline:
+                raise DeadlineReached()
+            time.sleep(5)
             html, title = self.session.current_html()
             fake = FetchResult("", "", 200, html, title, now_msk(), 0)
             if classify_page(fake, expect) == "ok":
@@ -211,7 +220,7 @@ class AvitoCrawler:
         per_page = max(len(first.cards), 1)
         need = min(a.max_pages_per_query, math.ceil(total / per_page)) if total else 1
         pages, cards, has_next = 1, len(first.cards), first.has_next
-        if total > a.max_pages_per_query * per_page:
+        if total > a.max_pages_per_query * per_page and not self._max_cards:  # в пилоте это ожидаемо
             self._complete = False
             self._err("search", search_url(a, 1, lo, hi), "slice_too_big",
                       f"{total} объявлений не помещаются в {a.max_pages_per_query} страниц")

@@ -11,6 +11,14 @@ import yaml
 
 @dataclass
 class BrowserConfig:
+    # launch  — сборщик сам запускает браузер (сервер, Colab);
+    # connect — подключается к отдельному окну Chrome на этом компьютере и работает в своей вкладке.
+    mode: str = "launch"
+    cdp_url: str = "http://127.0.0.1:9222"  # порт отладки Chrome (connect)
+    chrome_path: str | None = None  # путь к chrome.exe; None — найти автоматически (connect)
+    connect_profile_dir: str | None = None  # профиль Chrome для сборщика; None — %LOCALAPPDATA%\AvitoScraperChrome
+    auto_start_chrome: bool = True  # если Chrome с портом отладки не запущен — запустить его (connect)
+    chrome_args: list[str] = field(default_factory=list)  # доп. аргументы при автозапуске Chrome
     channel: str | None = "chrome"  # установленный Google Chrome; None — встроенный Chromium Playwright
     headless: bool = False  # Авито хуже относится к headless; на сервере без экрана — xvfb-run
     user_data_dir: str = "browser_profile"  # относительно data_dir; куки сохраняются между запусками
@@ -75,6 +83,9 @@ class Config:
     # Отдельный путь к базе. Нужен в Colab: SQLite держим на локальном диске, а не на Google Drive
     # (сетевая ФС Drive плохо переносит запись SQLite), и копируем на Drive после запуска.
     db_file: str | None = None
+    # Куда класть копию базы после каждого запуска (например, в папку Google Drive на компьютере,
+    # чтобы команда видела данные в Colab). Сама база при этом остаётся на локальном диске.
+    db_copy_to: str | None = None
     seller_hash_salt: str = "change-me"
     browser: BrowserConfig = field(default_factory=BrowserConfig)
     pacing: PacingConfig = field(default_factory=PacingConfig)
@@ -93,6 +104,13 @@ class Config:
             p = Path(self.db_file)
             return p if p.is_absolute() else (self.base_dir / p)
         return self.data_path / self.db_name
+
+    @property
+    def db_copy_path(self) -> Path | None:
+        if not self.db_copy_to:
+            return None
+        p = Path(self.db_copy_to)
+        return p if p.is_absolute() else (self.base_dir / p)
 
     def path(self, *parts: str) -> Path:
         return self.data_path.joinpath(*parts)

@@ -1,11 +1,10 @@
 """Помощники для работы из Google Colab / Jupyter.
 
-Схема хранения в Colab:
-- код — в /content/realty-scraper (клон GitHub или распакованный zip с Drive);
-- данные (фото, сырые страницы, отчёты, журналы, экспорт) — сразу в общей папке на Google Drive;
-- база SQLite — на локальном диске /content: Drive как сетевая ФС плохо переносит запись SQLite.
-  DbSync копирует базу с Drive в начале сессии и обратно — после каждой команды и каждые 10 минут
-  во время долгих команд, чтобы обрыв сессии не съел больше нескольких минут работы.
+Основная схема: сбор идёт на компьютере (Windows, режим connect к Chrome), данные пишутся в папку
+Google Drive, а копия базы после каждого запуска кладётся туда же (db_copy_to). Ноутбук в Colab берёт
+снимок этой копии на локальный диск и показывает отчёты, таблицы и фото — ничего не записывая в базу.
+
+DbSync/run_cli нужны для запасного варианта, когда сбор запускают прямо из Colab (сервер, прокси).
 """
 
 from __future__ import annotations
@@ -22,22 +21,22 @@ from pathlib import Path
 
 import yaml
 
+from .db import copy_db as sqlite_copy
+
 EXIT_MEANING = {0: "успешно", 1: "ошибка — смотрите журнал выше", 2: "не уложились в лимит времени",
                 3: "Авито блокирует запросы"}
 
 
-def sqlite_copy(src: Path, dst: Path):
-    """Согласованная копия базы (работает и пока в неё пишет другой процесс)."""
-    dst = Path(dst)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    tmp = dst.with_name(dst.name + ".tmp")
-    s = sqlite3.connect(src, timeout=60)
-    d = sqlite3.connect(tmp)
-    with d:
-        s.backup(d)
-    s.close()
-    d.close()
-    os.replace(tmp, dst)
+def snapshot_db(shared: Path, local: Path) -> Path:
+    """Свежий снимок общей базы с Drive на локальный диск — только для чтения."""
+    shared, local = Path(shared), Path(local)
+    if not shared.exists():
+        raise FileNotFoundError(f"На Drive пока нет базы ({shared}). Она появится после первого запуска "
+                                "сборщика на компьютере (windows\\run.bat → пункт 1 или 2).")
+    sqlite_copy(shared, local)
+    when = datetime.fromtimestamp(shared.stat().st_mtime)
+    print(f"Снимок базы от {when:%d.%m.%Y %H:%M} ({shared.stat().st_size / 2**20:.1f} МБ)")
+    return local
 
 
 class DbSync:
