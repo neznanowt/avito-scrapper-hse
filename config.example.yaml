@@ -1,0 +1,35 @@
+# Скопируйте в config.yaml и поправьте под себя. Все параметры необязательны —
+# неуказанные берутся из realty_scraper/config.py.
+
+data_dir: ./data                 # база, фото, сырые страницы, журналы, отчёты
+seller_hash_salt: "замените-на-случайную-строку"   # соль для псевдонима продавца; не менять после начала сбора
+
+browser:
+  channel: chrome                # установленный Google Chrome; null — встроенный Chromium Playwright
+  headless: false                # на сервере без экрана запускайте через xvfb-run (см. deploy/run_daily.sh)
+  proxy: null                    # "http://user:pass@host:port", если центр выдаст прокси
+  page_timeout_s: 60
+
+pacing:
+  delay_min_s: 7                 # пауза между страницами, секунды
+  delay_max_s: 16
+  long_pause_every: 40           # каждые 40 страниц — длинная пауза 1–3 мин
+  block_pause_s: 900             # после блокировки ждём 15 мин
+  max_block_retries: 2           # третья блокировка подряд — запуск останавливается (код выхода 3)
+  wait_for_operator: false       # true + видимый браузер: ждать, пока человек сам пройдёт проверку
+
+avito:
+  search_path: /sankt-peterburg/kvartiry/prodam/vtorichka-ASgBAgICAkSSA8YQ5geMUg
+  slice_threshold: 4800          # больше — делим запрос по цене (Авито отдаёт максимум 100 страниц)
+  save_raw_items: true           # сохранять страницы карточек (.html.gz) для повторного разбора
+  save_raw_search: false
+  refresh_after_days: 30
+  max_new_items_per_run: 1500
+  max_refresh_per_run: 300
+  max_verify_per_run: 300
+
+photos:
+  max_side: 384
+  jpeg_quality: 85
+  delay_min_s: 0.2
+  delay_max_s: 0.6
