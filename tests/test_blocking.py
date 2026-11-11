@@ -15,13 +15,23 @@ from .fakeavito import BLOCK_HTML, item_html, listing
 class StubSession:
     """Отдаёт заранее заданные страницы вместо браузера."""
 
-    def __init__(self, pages):
+    def __init__(self, pages, interactive=False, window_pages=()):
         self.pages = list(pages)
         self.slept = []
+        self.interactive = interactive
+        self.window_pages = list(window_pages)  # что видно в окне, пока ждём человека
+        self.fronted = False
 
     def fetch(self, url, wait_selector=None):
         html, status, title = self.pages.pop(0)
         return FetchResult(url, url, status, html, title, datetime(2026, 11, 11, 3, 0, tzinfo=MSK), 0.1)
+
+    def current_html(self):
+        html, _, title = self.window_pages.pop(0)
+        return html, title
+
+    def bring_to_front(self):
+        self.fronted = True
 
     def sleep(self, s):
         self.slept.append(s)
@@ -30,13 +40,28 @@ class StubSession:
         pass
 
 
-def _crawler(tmp_path, pages):
+def _crawler(tmp_path, pages, **session_kw):
     cfg = Config(base_dir=tmp_path)
     cfg.pacing.block_pause_s = 1
     cfg.pacing.max_block_retries = 2
     con = db.connect(cfg.db_path)
     run_id = db.start_run(con, "test", "avito", datetime.now(MSK))
-    return AvitoCrawler(cfg, StubSession(pages), con, run_id), con
+    return AvitoCrawler(cfg, StubSession(pages, **session_kw), con, run_id), con
+
+
+def test_connect_mode_waits_for_person_to_pass_check(tmp_path, monkeypatch):
+    import realty_scraper.platforms.avito.crawler as crawler_mod
+
+    monkeypatch.setattr(crawler_mod.time, "sleep", lambda s: None)
+    L = listing(8000000001, 10_000_000)
+    blocked = (BLOCK_HTML, 200, "Доступ ограничен: проблема с IP")
+    ok = (item_html(L), 200, "ok")
+    cr, con = _crawler(tmp_path, [blocked, ok], interactive=True, window_pages=[blocked, ok])
+    cr.cfg.browser.mode = "connect"
+    res, kind = cr.get("https://www.avito.ru/x_8000000001", "item")
+    assert kind == "ok"
+    assert cr.session.fronted  # вкладку вывели на передний план, чтобы человек увидел проверку
+    assert cr.session.slept == []  # 15-минутной паузы не было: дождались человека
 
 
 def test_block_then_recover(tmp_path):

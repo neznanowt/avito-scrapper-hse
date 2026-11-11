@@ -18,6 +18,14 @@ class DeadlineReached(Exception):
     """Исчерпан отведённый на запуск бюджет времени."""
 
 
+class BrowserUnavailable(Exception):
+    """Не удалось подключиться к Chrome или запустить его."""
+
+
+class BrowserClosed(Exception):
+    """Окно Chrome, к которому подключён сборщик, закрыли во время работы."""
+
+
 @dataclass
 class SearchCard:
     listing_id: str

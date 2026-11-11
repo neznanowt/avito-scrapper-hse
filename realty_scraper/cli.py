@@ -8,7 +8,7 @@ from pathlib import Path
 
 from . import db, pipeline
 from .config import load_config
-from .models import BlockedError
+from .models import BlockedError, BrowserClosed, BrowserUnavailable
 
 EXIT_OK, EXIT_ERROR, EXIT_PARTIAL, EXIT_BLOCKED = 0, 1, 2, 3
 
@@ -47,9 +47,32 @@ def main(argv=None) -> int:
     sp.add_argument("--keep", type=int, default=14)
     sp = sub.add_parser("export", help="выгрузить listings.csv и photos.csv")
     sp.add_argument("--out", default=None, help="папка (по умолчанию data/export)")
+    sub.add_parser("setup", help="мастер настройки на этом компьютере (папка Google Drive, config.yaml)")
+    sub.add_parser("chrome", help="открыть отдельное окно Chrome сборщика (например, чтобы войти на Авито)")
+    sub.add_parser("update", help="обновить код с GitHub")
 
     args = p.parse_args(argv)
+    if args.cmd == "setup":
+        from .local_setup import run_setup
+        run_setup(Path(args.config) if args.config else None)
+        return EXIT_OK
+    if args.cmd == "update":
+        from .local_setup import run_update
+        try:
+            print(run_update())
+        except Exception as e:  # noqa: BLE001
+            print(f"Не удалось обновить код: {e}", file=sys.stderr)
+            return EXIT_ERROR
+        return EXIT_OK
     cfg = load_config(args.config)
+    if args.cmd == "chrome":
+        from .local_setup import open_chrome
+        try:
+            open_chrome(cfg.browser)
+        except BrowserUnavailable as e:
+            print(e, file=sys.stderr)
+            return EXIT_ERROR
+        return EXIT_OK
 
     try:
         if args.cmd == "init":
@@ -90,7 +113,10 @@ def main(argv=None) -> int:
         return EXIT_ERROR
     except KeyboardInterrupt:
         return EXIT_ERROR
-    except Exception:  # noqa: BLE001 — подробности уже в журнале
+    except (BrowserUnavailable, BrowserClosed):  # сообщение уже в журнале
+        return EXIT_ERROR
+    except Exception as e:  # noqa: BLE001 — подробности в журнале
+        print(f"Ошибка: {e}", file=sys.stderr)
         return EXIT_ERROR
     status = _last_status(cfg)
     return {"ok": EXIT_OK, "partial": EXIT_PARTIAL, "blocked": EXIT_BLOCKED}.get(status, EXIT_ERROR)

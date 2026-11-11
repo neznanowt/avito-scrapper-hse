@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import gzip
 import json
 import logging
@@ -16,7 +15,7 @@ from pathlib import Path
 from . import db
 from .browser import BrowserSession
 from .config import Config
-from .models import BlockedError, ParseError
+from .models import BlockedError, BrowserClosed, BrowserUnavailable, ParseError
 from .photos import download_pending
 from .platforms.avito import PLATFORM
 from .platforms.avito.crawler import AvitoCrawler
@@ -59,14 +58,22 @@ class Runner:
     def __enter__(self):
         # блокировка рядом с базой: в Colab это локальный диск, и «чужой» PID с прошлой сессии не помешает
         self.lock = RunLock(self.cfg.db_path.with_suffix(".lock")).__enter__()
-        setup_logging(self.cfg.path("logs"), self.mode)
-        self.con = db.connect(self.cfg.db_path)
-        self.started = now_msk()
-        self.run_id = db.start_run(self.con, self.mode, PLATFORM, self.started)
+        try:
+            setup_logging(self.cfg.path("logs"), self.mode)
+            self.con = db.connect(self.cfg.db_path)
+            self.started = now_msk()
+            self.run_id = db.start_run(self.con, self.mode, PLATFORM, self.started)
+        except BaseException:
+            self.lock.__exit__(None, None, None)
+            raise
         log.info("Запуск №%d (%s), данные: %s", self.run_id, self.mode, self.cfg.data_path)
-        if self.need_browser:
-            self.session = BrowserSession(self.cfg.browser, self.cfg.pacing,
-                                          self.cfg.path(self.cfg.browser.user_data_dir), self.deadline).__enter__()
+        try:
+            if self.need_browser:
+                self.session = BrowserSession(self.cfg.browser, self.cfg.pacing,
+                                              self.cfg.path(self.cfg.browser.user_data_dir), self.deadline).__enter__()
+        except BaseException:  # браузер не поднялся — корректно закрываем запуск, базу и блокировку
+            self.__exit__(*sys.exc_info())
+            raise
         self.crawler = AvitoCrawler(self.cfg, self.session, self.con, self.run_id, self.deadline)
         return self
 
@@ -84,6 +91,12 @@ class Runner:
         elif issubclass(et, KeyboardInterrupt):
             status = "interrupted"
             log.warning("Прервано вручную")
+        elif issubclass(et, BrowserClosed):
+            status = "interrupted"
+            log.error("%s", ev)
+        elif issubclass(et, BrowserUnavailable):
+            status = "error"
+            log.error("%s", ev)
         else:
             status = "error"
             log.exception("Запуск упал")
@@ -94,9 +107,20 @@ class Runner:
             log.info("Запуск №%d завершён: %s; %s", self.run_id, status,
                      json.dumps(self.stats, ensure_ascii=False, default=str))
             self.con.close()
+            self._copy_db()
             self.lock.__exit__(None, None, None)
         self.final_status = status
         return False
+
+    def _copy_db(self):
+        dest = self.cfg.db_copy_path
+        if not dest:
+            return
+        try:
+            db.copy_db(self.cfg.db_path, dest)
+            log.info("Копия базы: %s", dest)
+        except Exception as e:  # noqa: BLE001 — копия не должна ломать запуск
+            log.warning("Не удалось скопировать базу в %s: %s", dest, e)
 
 
 def _partial(*stage_stats) -> bool:
@@ -282,16 +306,5 @@ def backup_db(cfg: Config, keep: int = 14) -> Path:
 
 def export_csv(cfg: Config, out_dir: Path):
     """Выгрузка для коллег: listings.csv и photos.csv (UTF-8 с BOM — открывается в Excel)."""
-    out_dir.mkdir(parents=True, exist_ok=True)
-    con = db.connect(cfg.db_path)
-    for table, name in (("listings", "listings.csv"), ("photos", "photos.csv")):
-        cur = con.execute(f"SELECT * FROM {table}" + (" WHERE is_current=1" if table == "photos" else ""))
-        with open(out_dir / name, "w", newline="", encoding="utf-8-sig") as f:
-            w = csv.writer(f)
-            w.writerow([d[0] for d in cur.description])
-            n = 0
-            for row in cur:
-                w.writerow(list(row))
-                n += 1
-        print(f"{out_dir / name}: {n} строк")
-    con.close()
+    for path, n in db.export_tables(cfg.db_path, out_dir):
+        print(f"{path}: {n} строк")

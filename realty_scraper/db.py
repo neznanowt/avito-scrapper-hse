@@ -190,6 +190,45 @@ def connect(path: Path) -> sqlite3.Connection:
     return con
 
 
+def copy_db(src: Path, dst: Path):
+    """Согласованная копия базы (SQLite backup API работает, даже пока в базу пишет другой процесс).
+    Пишем во временный файл и подменяем — читатель на той стороне не увидит половину файла."""
+    import os
+
+    dst = Path(dst)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dst.with_name(dst.name + ".tmp")
+    s = sqlite3.connect(src, timeout=60)
+    d = sqlite3.connect(tmp)
+    with d:
+        s.backup(d)
+    s.close()
+    d.close()
+    os.replace(tmp, dst)
+
+
+def export_tables(db_path: Path, out_dir: Path) -> list[tuple[Path, int]]:
+    """listings.csv и photos.csv (только текущие фото). UTF-8 с BOM — Excel открывает без «кракозябр»."""
+    import csv
+
+    out_dir = Path(out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    con = sqlite3.connect(db_path)
+    result = []
+    for table, name in (("listings", "listings.csv"), ("photos", "photos.csv")):
+        cur = con.execute(f"SELECT * FROM {table}" + (" WHERE is_current=1" if table == "photos" else ""))
+        n = 0
+        with open(out_dir / name, "w", newline="", encoding="utf-8-sig") as f:
+            w = csv.writer(f)
+            w.writerow([d[0] for d in cur.description])
+            for row in cur:
+                w.writerow(list(row))
+                n += 1
+        result.append((out_dir / name, n))
+    con.close()
+    return result
+
+
 def _ensure_columns(con, table, columns):
     have = {r["name"] for r in con.execute(f"PRAGMA table_info({table})")}
     for name, typ in columns:
