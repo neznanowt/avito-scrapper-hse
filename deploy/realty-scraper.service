@@ -1,0 +1,15 @@
+# /etc/systemd/system/realty-scraper.service
+[Unit]
+Description=Сбор объявлений о квартирах (Авито, СПб)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=realty
+WorkingDirectory=/opt/realty-scraper
+ExecStart=/opt/realty-scraper/deploy/run_daily.sh
+# 2 — не уложились в лимит времени: это не ошибка, завтра продолжим
+SuccessExitStatus=2
+TimeoutStartSec=9h
+Nice=10

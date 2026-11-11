@@ -1,0 +1,4 @@
+# Альтернатива systemd: crontab -e
+# Время — по часовому поясу сервера. Если сервер в UTC, 23:30 МСК = 20:30 UTC.
+CRON_TZ=Europe/Moscow
+30 23 * * * /opt/realty-scraper/deploy/run_daily.sh >> /opt/realty-scraper/data/logs/cron.log 2>&1

@@ -1,0 +1,10 @@
+playwright>=1.45
+beautifulsoup4>=4.12
+lxml>=5.0
+requests>=2.31
+Pillow>=10.0
+numpy>=1.26
+PyYAML>=6.0
+tzdata; platform_system == "Windows"
+# для тестов
+pytest>=8.0
