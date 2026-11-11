@@ -6,6 +6,7 @@ import csv
 import gzip
 import json
 import logging
+import os
 import sqlite3
 import sys
 import time
@@ -117,7 +118,8 @@ def run_pilot(cfg: Config, n: int = 500, photos: bool = True) -> Path:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(text, encoding="utf-8")
         log.info("Отчёт по пилоту: %s", out)
-        print(text)
+        if not os.environ.get("REALTY_NOTEBOOK"):  # в ноутбуке отчёт показывается отдельной ячейкой
+            print(text)
     return out
 
 
@@ -236,8 +238,9 @@ def write_full_report(cfg: Config) -> Path:
     out = cfg.path("reports", f"report_{now_msk():%Y%m%d_%H%M}.md")
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(text, encoding="utf-8")
-    print(text)
-    print(f"\nОтчёт сохранён: {out}")
+    if not os.environ.get("REALTY_NOTEBOOK"):
+        print(text)
+    print(f"Отчёт сохранён: {out}")
     return out
 
 

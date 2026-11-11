@@ -101,12 +101,17 @@ def get_or_create_salt(project_dir: Path) -> str:
 
 
 def write_config(path: Path, *, data_dir: Path, db_file: Path, salt: str, proxy: str | None = None,
-                 headless: bool = True, channel: str | None = None, extra: dict | None = None) -> Path:
+                 headless: bool = True, channel: str | None = None, profile_dir: Path | None = None,
+                 extra: dict | None = None) -> Path:
+    """profile_dir — профиль браузера на локальном диске: Chrome не работает с профилем на Google Drive."""
+    browser = {"headless": headless, "channel": channel, "proxy": proxy or None}
+    if profile_dir:
+        browser["user_data_dir"] = str(profile_dir)
     cfg = {
         "data_dir": str(data_dir),
         "db_file": str(db_file),
         "seller_hash_salt": salt,
-        "browser": {"headless": headless, "channel": channel, "proxy": proxy or None},
+        "browser": browser,
     }
     for k, v in (extra or {}).items():
         if isinstance(v, dict):
@@ -128,7 +133,7 @@ def run_cli(args: list[str], *, code_dir: Path, config: Path, sync: DbSync | Non
     cmd = [sys.executable, "-m", "realty_scraper", "--config", str(config), *map(str, args)]
     if xvfb:
         cmd = ["xvfb-run", "-a", "--server-args=-screen 0 1366x900x24", *cmd]
-    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONPATH=str(code_dir))
+    env = dict(os.environ, PYTHONUNBUFFERED="1", PYTHONPATH=str(code_dir), REALTY_NOTEBOOK="1")
     proc = subprocess.Popen(cmd, cwd=code_dir, env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                             text=True, bufsize=1)
     stop = threading.Event()
