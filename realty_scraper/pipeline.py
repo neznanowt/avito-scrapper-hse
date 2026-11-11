@@ -22,7 +22,7 @@ from .platforms.avito.crawler import AvitoCrawler
 from .platforms.avito.parse_item import parse_item_page
 from .platforms.avito.parse_search import parse_search_page
 from .platforms.avito.urls import search_url
-from .report import pilot_report
+from .report import full_report, pilot_report
 from .utils import MSK, RunLock, now_msk
 
 log = logging.getLogger("realty")
@@ -56,7 +56,8 @@ class Runner:
         self.session = None
 
     def __enter__(self):
-        self.lock = RunLock(self.cfg.path(".lock")).__enter__()
+        # блокировка рядом с базой: в Colab это локальный диск, и «чужой» PID с прошлой сессии не помешает
+        self.lock = RunLock(self.cfg.db_path.with_suffix(".lock")).__enter__()
         setup_logging(self.cfg.path("logs"), self.mode)
         self.con = db.connect(self.cfg.db_path)
         self.started = now_msk()
@@ -98,14 +99,17 @@ class Runner:
 
 
 def _partial(*stage_stats) -> bool:
-    return any(s.get("stopped_by_deadline") or s.get("stopped") == "DeadlineReached" for s in stage_stats)
+    return any(s.get("stopped_by_deadline") or s.get("stopped") == "DeadlineReached"
+               for s in stage_stats if isinstance(s, dict))
 
 
 def run_pilot(cfg: Config, n: int = 500, photos: bool = True) -> Path:
     with Runner(cfg, "pilot") as r:
+        t0 = time.monotonic()
         r.stats["search"] = r.crawler.crawl_search(max_cards=n, sliced=False)
         r.stats["items"] = r.crawler.crawl_items("run", limit=n)
         r.close_browser()
+        r.stats["fetch_elapsed_s"] = round(time.monotonic() - t0)
         if photos:
             r.stats["photos"] = download_pending(r.con, cfg, PLATFORM, r.run_id, deadline=r.deadline)
         text = pilot_report(r.con, r.run_id, PLATFORM, r.stats, r.crawler.timings, r.started)
@@ -120,6 +124,7 @@ def run_pilot(cfg: Config, n: int = 500, photos: bool = True) -> Path:
 def run_daily(cfg: Config, budget_hours: float | None = 7.0, photos: bool = True):
     a = cfg.avito
     with Runner(cfg, "daily", budget_hours=budget_hours) as r:
+        t0 = time.monotonic()
         s = r.crawler.crawl_search(sliced=True)
         r.stats["search"] = s
         r.search_complete = bool(s.get("complete"))
@@ -135,6 +140,7 @@ def run_daily(cfg: Config, budget_hours: float | None = 7.0, photos: bool = True
             if st.get("stopped_by_deadline"):
                 break
         r.close_browser()
+        r.stats["fetch_elapsed_s"] = round(time.monotonic() - t0)
         if photos:
             r.stats["photos"] = download_pending(r.con, cfg, PLATFORM, r.run_id, deadline=r.deadline)
         if _partial(*r.stats.values()):
@@ -221,6 +227,18 @@ def run_reparse(cfg: Config):
             st["parsed"] += 1
         r.stats["reparse"] = st
         print(st)
+
+
+def write_full_report(cfg: Config) -> Path:
+    con = db.connect(cfg.db_path)
+    text = full_report(con, PLATFORM)
+    con.close()
+    out = cfg.path("reports", f"report_{now_msk():%Y%m%d_%H%M}.md")
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text(text, encoding="utf-8")
+    print(text)
+    print(f"\nОтчёт сохранён: {out}")
+    return out
 
 
 def print_stats(cfg: Config):

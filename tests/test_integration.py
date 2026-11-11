@@ -82,3 +82,7 @@ def test_pilot_then_daily(tmp_path):
         obs = con.execute("SELECT COUNT(DISTINCT obs_date) FROM observations").fetchone()[0]
         assert obs >= 1
         con.close()
+
+        # отчёт по всей базе (нужен, если пилот шёл частями)
+        text = pipeline.write_full_report(cfg).read_text(encoding="utf-8")
+        assert "Заполненность полей" in text and "Карточек разобрано: **8**" in text

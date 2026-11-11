@@ -72,6 +72,9 @@ class PhotoConfig:
 class Config:
     data_dir: str = "data"
     db_name: str = "realty.sqlite"
+    # Отдельный путь к базе. Нужен в Colab: SQLite держим на локальном диске, а не на Google Drive
+    # (сетевая ФС Drive плохо переносит запись SQLite), и копируем на Drive после запуска.
+    db_file: str | None = None
     seller_hash_salt: str = "change-me"
     browser: BrowserConfig = field(default_factory=BrowserConfig)
     pacing: PacingConfig = field(default_factory=PacingConfig)
@@ -86,6 +89,9 @@ class Config:
 
     @property
     def db_path(self) -> Path:
+        if self.db_file:
+            p = Path(self.db_file)
+            return p if p.is_absolute() else (self.base_dir / p)
         return self.data_path / self.db_name
 
     def path(self, *parts: str) -> Path:
