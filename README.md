@@ -1,5 +1,7 @@
 # realty-scraper — сбор объявлений о квартирах (вторичка СПб)
 
+[![Открыть в Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/neznanowt/avito-scrapper-hse/blob/main/notebooks/avito_collector_colab.ipynb)
+
 Часть проекта центра по анализу рынка недвижимости: постоянный сбор объявлений с фото для оценки
 состояния ремонта (репликация Almaas, Oust, Pollestad, 2026). Сейчас реализован **Авито**; Циан и Домклик
 подключаются как новые адаптеры в `realty_scraper/platforms/` в ту же схему базы.
