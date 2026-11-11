@@ -35,7 +35,7 @@ def find_drive_roots() -> list[Path]:
     roots: list[Path] = []
     names = ("Мой диск", "My Drive")
     if os.name == "nt":
-        for letter in string.ascii_uppercase:
+        for letter in string.ascii_uppercase[2:]:  # с C:, без дисководов A: и B:
             for name in names:
                 p = Path(f"{letter}:\\") / name
                 try:
