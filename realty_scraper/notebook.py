@@ -22,6 +22,7 @@ from pathlib import Path
 import yaml
 
 from .db import copy_db as sqlite_copy
+from .utils import MSK
 
 EXIT_MEANING = {0: "успешно", 1: "ошибка — смотрите журнал выше", 2: "не уложились в лимит времени",
                 3: "Авито блокирует запросы"}
@@ -34,8 +35,8 @@ def snapshot_db(shared: Path, local: Path) -> Path:
         raise FileNotFoundError(f"На Drive пока нет базы ({shared}). Она появится после первого запуска "
                                 "сборщика на компьютере (windows\\run.bat → пункт 1 или 2).")
     sqlite_copy(shared, local)
-    when = datetime.fromtimestamp(shared.stat().st_mtime)
-    print(f"Снимок базы от {when:%d.%m.%Y %H:%M} ({shared.stat().st_size / 2**20:.1f} МБ)")
+    when = datetime.fromtimestamp(shared.stat().st_mtime, MSK)
+    print(f"Снимок базы от {when:%d.%m.%Y %H:%M} МСК ({shared.stat().st_size / 2**20:.1f} МБ)")
     return local
 
 
