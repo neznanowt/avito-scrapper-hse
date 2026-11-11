@@ -42,6 +42,7 @@ def main(argv=None) -> int:
 
     sub.add_parser("reparse", help="повторно разобрать сохранённые страницы карточек")
     sub.add_parser("stats", help="сводка по базе, запускам и ошибкам")
+    sub.add_parser("report", help="отчёт по всей базе: заполненность полей, фото, скорость, прогноз объёма")
     sp = sub.add_parser("backup", help="резервная копия базы в data/backup")
     sp.add_argument("--keep", type=int, default=14)
     sp = sub.add_parser("export", help="выгрузить listings.csv и photos.csv")
@@ -58,6 +59,9 @@ def main(argv=None) -> int:
             return EXIT_OK
         if args.cmd == "stats":
             pipeline.print_stats(cfg)
+            return EXIT_OK
+        if args.cmd == "report":
+            pipeline.write_full_report(cfg)
             return EXIT_OK
         if args.cmd == "backup":
             pipeline.backup_db(cfg, keep=args.keep)

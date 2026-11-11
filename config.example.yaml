@@ -2,6 +2,7 @@
 # неуказанные берутся из realty_scraper/config.py.
 
 data_dir: ./data                 # база, фото, сырые страницы, журналы, отчёты
+# db_file: /content/realty.sqlite  # отдельный путь к базе (в Colab — локальный диск, см. notebooks/)
 seller_hash_salt: "замените-на-случайную-строку"   # соль для псевдонима продавца; не менять после начала сбора
 
 browser:
